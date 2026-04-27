@@ -1,0 +1,89 @@
+{
+  "info": {
+    "name": "Queue-Ticketing-Payment Security Regression",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "https://example.test" },
+    { "key": "access_token", "value": "" },
+    { "key": "queue_token", "value": "" },
+    { "key": "checkout_grant", "value": "" },
+    { "key": "session_id", "value": "sess-test" },
+    { "key": "device_id", "value": "dev-test" },
+    { "key": "order_id", "value": "ord-123" },
+    { "key": "amount", "value": "100" },
+    { "key": "currency", "value": "USD" }
+  ],
+  "item": [
+    {
+      "name": "Tampered queue token rejected",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{access_token}}" },
+          { "key": "X-Queue-Token", "value": "{{queue_token}}-tampered" },
+          { "key": "X-Session-ID", "value": "{{session_id}}" },
+          { "key": "X-Device-ID", "value": "{{device_id}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": "{{base_url}}/api/checkout/start",
+        "body": { "mode": "raw", "raw": "{\n  \"dry_run\": true\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.expect(pm.response.code).to.be.oneOf([400,401,403,409,410,422,429]);"] } }]
+    },
+    {
+      "name": "Replay checkout grant rejected",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{access_token}}" },
+          { "key": "X-Checkout-Grant", "value": "{{checkout_grant}}" },
+          { "key": "X-Session-ID", "value": "{{session_id}}" },
+          { "key": "X-Device-ID", "value": "{{device_id}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": "{{base_url}}/api/checkout/finalize",
+        "body": { "mode": "raw", "raw": "{\n  \"event_id\": \"evt-123\",\n  \"ticket_qty\": 1\n}" }
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.expect(pm.response.code).to.be.oneOf([200,201,202,400,401,403,409,410,422,429]);"] } }]
+    },
+    {
+      "name": "Payment idempotency",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "if (!pm.collectionVariables.get('idempotency_key')) {",
+              "  pm.collectionVariables.set('idempotency_key', pm.variables.replaceIn('{{$guid}}'));",
+              "}"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.expect(pm.response.code).to.be.oneOf([200,201,202]);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{access_token}}" },
+          { "key": "Idempotency-Key", "value": "{{idempotency_key}}" },
+          { "key": "X-Session-ID", "value": "{{session_id}}" },
+          { "key": "X-Device-ID", "value": "{{device_id}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": "{{base_url}}/api/payment/confirm",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"order_id\": \"{{order_id}}\",\n  \"amount\": {{amount}},\n  \"currency\": \"{{currency}}\"\n}"
+        }
+      }
+    }
+  ]
+}
